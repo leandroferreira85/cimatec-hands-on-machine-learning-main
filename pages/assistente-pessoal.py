@@ -2,8 +2,15 @@ import time
 import streamlit as st
 import pandas as pd
 import numpy as np
+from datetime import date
 
 from openai import OpenAI
+
+import pdfkit
+import tempfile
+import base64
+from io import BytesIO
+
 
 st.title('Assistente pessoal')
 
@@ -26,8 +33,42 @@ opcao_criatividade = st.sidebar.slider(
     step=0.01
 )
 
+
+# Função para converter DataFrame para HTML com quebra de linha nas colunas de texto
+def dataframe_to_html(df):
+    return df.to_html(escape=False, formatters=dict(text=lambda x: x.replace('\n', '<br>')), index=False)
+
+# Função para converter HTML para PDF
+def html_to_pdf(html, pdf_buffer):
+    pdfkit.from_string(html, pdf_buffer)
+
 def finalizar_conversa():
-    pass
+    df = pd.DataFrame(columns=['Data/Hora','Completion Tokens','Prompt Tokens','Historico'])
+
+    conteudo_historico = ""
+    for message in st.session_state.mensagens:
+        conteudo_historico += f"[{message['role']}] {message['content']}\n"
+
+
+    conversa = {
+        'Data/Hora' : date.today(),
+        'Completion Tokens' : contador_tokens["completion_tokens"],
+        'Prompt Tokens' : contador_tokens["prompt_tokens"],
+        'Historico': conteudo_historico
+    }
+    df = df.append(conversa, ignore_index=True)
+    st.dataframe(df)
+
+    # Converter DataFrame para HTML
+    html_data = dataframe_to_html(df)
+
+    # Criar buffer de memória para armazenar o PDF
+    pdf_buffer = BytesIO()
+
+    # Converter HTML para PDF no buffer de memória
+    html_to_pdf(html_data, pdf_buffer)
+    st.download_button("Baixar PDF", data=pdf_buffer, file_name="dataframe.pdf", mime="application/pdf")
+
 
 def traduzir_tamanho_resposta(tamanho: int) -> str:
     if tamanho == 300:
@@ -49,6 +90,8 @@ opcao_estilo_resposta = st.sidebar.selectbox(
     label="Estilo da resposta",
     options=["expositivo", "rebuscado", "expositivo","narrativo", "criativo", "objetivo", "pragmático", "sistemático", "debochado","soteropolitano"]
 )
+
+
 
 # criando e inicializando o histório do chat
 if "mensagens" not in st.session_state:
@@ -106,8 +149,11 @@ if prompt:
 
         resposta = chamada.choices[0].message.content
 
+        
+
         # Display assistant response in chat message container
         with st.chat_message("system"):
+            st.markdown(f"Completion Tokens: {contador_tokens['completion_tokens']}\nPrompt Tokens: {contador_tokens['prompt_tokens']}")
             st.markdown(resposta)
         # Add assistant response to chat history
         st.session_state.mensagens.append({"role": "system", "content": resposta})
