@@ -11,6 +11,13 @@ import tempfile
 import base64
 from io import BytesIO
 
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Table, Spacer
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.units import inch
+# from reportlab.lib.styles import Paragraph
+
 
 st.title('Assistente pessoal')
 
@@ -33,6 +40,62 @@ opcao_criatividade = st.sidebar.slider(
     step=0.01
 )
 
+def formatar_texto(texto):
+    estilo_texto = ParagraphStyle(
+        'estilo_texto',
+        parent=getSampleStyleSheet()['Normal'],
+        wordWrap='LTR',
+        allowWidows=1,
+        allowOrphans=1,
+    )
+    return Paragraph(texto, estilo_texto)
+
+def converter_dataframe_para_lista(df):
+    lista_dados = [df.columns.tolist()] + df.values.tolist()
+    return lista_dados
+
+def exportar_tabela_para_pdf(dados):
+    
+    buffer = BytesIO()
+
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    elementos = []
+
+    # Crie a tabela com os dados
+    tabela = Table(dados)
+
+    # Defina o estilo da tabela
+    estilo_tabela = [
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 14),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 12),
+        ('ALIGN', (0, 1), (-1, -1), 'LEFT'),
+    ]
+    tabela.setStyle(estilo_tabela)
+
+    # Formate o texto longo em uma coluna da tabela
+    for linha in tabela:
+        for coluna, valor in enumerate(linha):
+            if isinstance(valor, str) and len(valor) > 50:  # Defina o limite de caracteres para quebra de linha
+                linha[coluna] = formatar_texto(valor)
+
+    # Adicione a tabela ao documento
+    elementos.append(tabela)
+
+    # Adicione um Spacer para criar um espaço entre a tabela e o próximo elemento
+    elementos.append(Spacer(1, 0.25 * inch))
+
+    doc.build(elementos)
+
+    buffer.seek(0)
+    return buffer
 
 # Função para converter DataFrame para HTML com quebra de linha nas colunas de texto
 def dataframe_to_html(df):
@@ -56,17 +119,22 @@ def finalizar_conversa():
         'Prompt Tokens' : contador_tokens["prompt_tokens"],
         'Historico': conteudo_historico
     }
-    df = df.append(conversa, ignore_index=True)
+    #df = df.append(conversa, ignore_index=True)
+    df = pd.concat([df, pd.DataFrame([conversa])], ignore_index=True)
     st.dataframe(df)
 
     # Converter DataFrame para HTML
-    html_data = dataframe_to_html(df)
+    # html_data = dataframe_to_html(df)
 
-    # Criar buffer de memória para armazenar o PDF
-    pdf_buffer = BytesIO()
+    # # Criar buffer de memória para armazenar o PDF
+    # pdf_buffer = BytesIO()
 
-    # Converter HTML para PDF no buffer de memória
-    html_to_pdf(html_data, pdf_buffer)
+    # # Converter HTML para PDF no buffer de memória
+    # html_to_pdf(html_data, pdf_buffer)
+
+    dados_tabela = converter_dataframe_para_lista(df)
+    pdf_buffer = exportar_tabela_para_pdf(dados_tabela)
+
     st.download_button("Baixar PDF", data=pdf_buffer, file_name="dataframe.pdf", mime="application/pdf")
 
 
@@ -90,8 +158,6 @@ opcao_estilo_resposta = st.sidebar.selectbox(
     label="Estilo da resposta",
     options=["expositivo", "rebuscado", "expositivo","narrativo", "criativo", "objetivo", "pragmático", "sistemático", "debochado","soteropolitano"]
 )
-
-
 
 # criando e inicializando o histório do chat
 if "mensagens" not in st.session_state:
