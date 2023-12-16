@@ -1,1 +1,1 @@
-# cimatec-hands-on-machine-learning-main
+# cimatec-hands-on-machine-learning
