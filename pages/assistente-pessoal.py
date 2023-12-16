@@ -6,10 +6,8 @@ from datetime import date
 
 from openai import OpenAI
 
-import pdfkit
-import tempfile
-import base64
-from io import BytesIO
+from io import StringIO
+from langchain.document_loaders import BSHTMLLoader
 
 
 st.title('Assistente pessoal')
@@ -24,6 +22,7 @@ contador_tokens = {
 # Obtendo a chave da openai
 chave = st.sidebar.text_input('Chave da API OpenAI', type = 'password')
 client = OpenAI(api_key=chave)
+modelo = "gpt-3.5-turbo"
 
 # input para a criatividade das respostas
 opcao_criatividade = st.sidebar.slider(
@@ -34,40 +33,9 @@ opcao_criatividade = st.sidebar.slider(
 )
 
 
-# Função para converter DataFrame para HTML com quebra de linha nas colunas de texto
-def dataframe_to_html(df):
-    return df.to_html(escape=False, formatters=dict(text=lambda x: x.replace('\n', '<br>')), index=False)
-
-# Função para converter HTML para PDF
-def html_to_pdf(html, pdf_buffer):
-    pdfkit.from_string(html, pdf_buffer)
 
 def finalizar_conversa():
-    df = pd.DataFrame(columns=['Data/Hora','Completion Tokens','Prompt Tokens','Historico'])
-
-    conteudo_historico = ""
-    for message in st.session_state.mensagens:
-        conteudo_historico += f"[{message['role']}] {message['content']}\n"
-
-
-    conversa = {
-        'Data/Hora' : date.today(),
-        'Completion Tokens' : contador_tokens["completion_tokens"],
-        'Prompt Tokens' : contador_tokens["prompt_tokens"],
-        'Historico': conteudo_historico
-    }
-    df = df.append(conversa, ignore_index=True)
-    st.dataframe(df)
-
-    # Converter DataFrame para HTML
-    html_data = dataframe_to_html(df)
-
-    # Criar buffer de memória para armazenar o PDF
-    pdf_buffer = BytesIO()
-
-    # Converter HTML para PDF no buffer de memória
-    html_to_pdf(html_data, pdf_buffer)
-    st.download_button("Baixar PDF", data=pdf_buffer, file_name="dataframe.pdf", mime="application/pdf")
+    pass
 
 
 def traduzir_tamanho_resposta(tamanho: int) -> str:
@@ -92,71 +60,89 @@ opcao_estilo_resposta = st.sidebar.selectbox(
 )
 
 
+uploaded_files = st.file_uploader("Selecione ou arraste os arquivos que irão fazer parte do contexto:",
+                                  type="txt",
+                                  accept_multiple_files=True)
 
-# criando e inicializando o histório do chat
-if "mensagens" not in st.session_state:
-    st.session_state.mensagens = [{
-        "role": 'system', 
-        "content": '''
-        Você é um assistente pessoal com objetivo de responder as 
-        perguntas do usuário com um estilo de escrita {opcao_estilo_resposta}. 
-        Limite o tamanho da resposta para {opcao_tamanho_resposta} palavras no máximo.
-        '''}]
+if uploaded_files:
+    text_list = []
+    for file in uploaded_files:
+        texto = file.getvalue().decode("utf-8")
+        text_list.append(texto)
 
-# Aparecer o Historico do Chat na tela
-for mensagens in st.session_state.mensagens[1:]:
-    with st.chat_message(mensagens["role"]):
-        st.markdown(mensagens["content"])
+    # criando e inicializando o histório do chat
+    contexto = f'''
+            Você é um assistente pessoal com objetivo de responder as 
+            perguntas do usuário com um estilo de escrita {opcao_estilo_resposta}. 
+            Limite o tamanho da resposta para {opcao_tamanho_resposta} palavras no máximo.
+            '''
+    if text_list and len(text_list) > 0:
+        contexto += "Para responder, considere as seguintes informações: \n\n\n\n"
+        contexto += f" {texto}\n"
 
-# React to user input
-prompt = st.chat_input("Digite alguma coisa")
-st.sidebar.button(
-    label="Finalizar conversa",
-    on_click=finalizar_conversa
-)
+    if "mensagens" not in st.session_state:
+        st.session_state.mensagens = [{
+            "role": 'system', 
+            "content": contexto}]
+
+    # Aparecer o Historico do Chat na tela
+    for mensagens in st.session_state.mensagens[1:]:
+        with st.chat_message(mensagens["role"]):
+            st.markdown(mensagens["content"])
 
 
-if prompt:
-    with st.chat_message("user"):
-        st.markdown(prompt)
+    # React to user input
+    prompt = st.chat_input("Digite alguma coisa")
+    st.sidebar.button(
+        label="Finalizar conversa",
+        on_click=finalizar_conversa
+    )
 
-    # TODO: incluir código da moderação do prompt
-    response_moderation = client.moderations.create(input=prompt)
 
-    df = pd.DataFrame(dict(response_moderation.results[0].category_scores).items(), columns=['Category', 'Value'])
-    df.sort_values(by = 'Value', ascending = False, inplace=True)
+    if prompt:
+        with st.chat_message("user"):
+            st.markdown(prompt)
 
-    if (df.iloc[0,1] > 0.01):
-        with st.chat_message("system"):
-            st.markdown("Acho que o que você falou se enquadra em algumas categorias que eu não posso falar sobre:")
-            for category in df.head(5)['Category']:
-                st.markdown(f'{category}')
-            st.markdown("Que tal falarmos sobre outra coisa?")
-    else:
-        # Display user message in chat message container
-        
-        # Add user message to chat history
-        st.session_state.mensagens.append({"role": "user", "content": prompt})
+        # TODO: incluir código da moderação do prompt
+        response_moderation = client.moderations.create(input=prompt)
 
-        chamada = client.chat.completions.create(
-            model = 'gpt-3.5-turbo',
-            temperature = opcao_criatividade,
-            messages = st.session_state.mensagens
-        )
+        df = pd.DataFrame(dict(response_moderation.results[0].category_scores).items(), columns=['Category', 'Value'])
+        df.sort_values(by = 'Value', ascending = False, inplace=True)
 
-        contador_tokens['prompt_tokens'] += chamada.usage.prompt_tokens
-        contador_tokens['completion_tokens'] += chamada.usage.completion_tokens
+        if (df.iloc[0,1] > 0.01):
+            with st.chat_message("system"):
+                st.markdown("Acho que o que você falou se enquadra em algumas categorias que eu não posso falar sobre:")
+                st.markdown("<ul>", unsafe_allow_html=True)
+                for category in df.head(5)['Category']:
+                    st.markdown(f'<li>Categoria: {category}</li>', unsafe_allow_html=True)
+                st.markdown("</ul>", unsafe_allow_html=True)
 
-        resposta = chamada.choices[0].message.content
+                st.markdown("Que tal falarmos sobre outra coisa?")
+        else:
+            # Display user message in chat message container
+            
+            # Add user message to chat history
+            st.session_state.mensagens.append({"role": "user", "content": prompt})
 
-        
+            chamada = client.chat.completions.create(
+                model = modelo,
+                temperature = opcao_criatividade,
+                messages = st.session_state.mensagens
+            )
 
-        # Display assistant response in chat message container
-        with st.chat_message("system"):
-            st.markdown(f"Completion Tokens: {contador_tokens['completion_tokens']}\nPrompt Tokens: {contador_tokens['prompt_tokens']}")
-            st.markdown(resposta)
-        # Add assistant response to chat history
-        st.session_state.mensagens.append({"role": "system", "content": resposta})
+            contador_tokens['prompt_tokens'] += chamada.usage.prompt_tokens
+            contador_tokens['completion_tokens'] += chamada.usage.completion_tokens
+
+            resposta = chamada.choices[0].message.content
+
+            
+
+            # Display assistant response in chat message container
+            with st.chat_message("system"):
+                st.markdown(f"Completion Tokens: {contador_tokens['completion_tokens']}\nPrompt Tokens: {contador_tokens['prompt_tokens']}")
+                st.markdown(resposta)
+            # Add assistant response to chat history
+            st.session_state.mensagens.append({"role": "system", "content": resposta})
 
 
 
