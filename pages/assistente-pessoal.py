@@ -2,7 +2,7 @@ import time
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import date
+from datetime import datetime
 
 from openai import OpenAI
 
@@ -11,13 +11,15 @@ import tempfile
 import base64
 from io import BytesIO
 
+from reportlab.pdfgen.canvas import Canvas
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, Spacer
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.units import inch
-# from reportlab.lib.styles import Paragraph
-
+import reportlab.platypus as rlplt
+from reportlab.lib.pagesizes import letter, landscape, A4
+from reportlab.platypus import Frame, PageTemplate, KeepInFrame, Paragraph
+from reportlab.lib.units import mm, inch
+from reportlab.lib.enums import TA_JUSTIFY, TA_LEFT, TA_CENTER, TA_RIGHT
 
 st.title('Assistente pessoal')
 
@@ -41,14 +43,34 @@ opcao_criatividade = st.sidebar.slider(
 )
 
 def formatar_texto(texto):
-    estilo_texto = ParagraphStyle(
-        'estilo_texto',
-        parent=getSampleStyleSheet()['Normal'],
-        wordWrap='LTR',
-        allowWidows=1,
-        allowOrphans=1,
-    )
-    return Paragraph(texto, estilo_texto)
+    # estilo_texto = ParagraphStyle(
+    #     'estilo_texto',
+    #     parent=getSampleStyleSheet()['Normal'],
+    #     wordWrap='LTR',
+    #     allowWidows=1,
+    #     allowOrphans=1,
+    # )
+    estilo_texto = ParagraphStyle(name='Breadpointlist_style',
+                              alignment=TA_LEFT,
+                              parent=getSampleStyleSheet()['Normal'],
+                              bulletFontSize=7,
+                              bulletIndent=0,
+                              endDots=None,
+                              firstLineIndent=0,
+                              fontSize=8,
+                              justifyBreaks=0,
+                              justifyLastLine=0,
+                              leading=9.2,
+                              leftIndent=11,
+                              rightIndent=0,
+                              spaceAfter=0,
+                              spaceBefore=0,
+                              textColor=colors.black,
+                              wordWrap='LTR',
+                              splitLongWords=True,
+                              spaceShrinkage=0.05,
+                              )
+    return Paragraph(texto, estilo_texto) if isinstance(texto, str) else texto
 
 def converter_dataframe_para_lista(df):
     lista_dados = [df.columns.tolist()] + df.values.tolist()
@@ -58,11 +80,20 @@ def exportar_tabela_para_pdf(dados):
     
     buffer = BytesIO()
 
-    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    left_margin = 5 * mm
+    right_margin = 5 * mm
+    top_margin = 5 * mm
+    bottom_margin = 5 * mm
+
+    doc = SimpleDocTemplate(buffer, pagesize=(landscape(A4)),
+                        leftMargin=left_margin, rightMargin=right_margin,
+                        topMargin=top_margin, bottomMargin=bottom_margin)
     elementos = []
 
+    dados2 = [[formatar_texto(cell) for cell in row] for row in dados]
+
     # Crie a tabela com os dados
-    tabela = Table(dados)
+    tabela = rlplt.Table(dados2, colWidths=(30*mm, 20*mm, 20*mm, 25*mm, None))
 
     # Defina o estilo da tabela
     estilo_tabela = [
@@ -70,28 +101,31 @@ def exportar_tabela_para_pdf(dados):
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 14),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
         ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
         ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
         ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 12),
-        ('ALIGN', (0, 1), (-1, -1), 'LEFT'),
+        ('FONTSIZE', (0, 1), (-1, -1), 10),
+        ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
     ]
     tabela.setStyle(estilo_tabela)
 
-    # Formate o texto longo em uma coluna da tabela
-    for linha in tabela:
-        for coluna, valor in enumerate(linha):
-            if isinstance(valor, str) and len(valor) > 50:  # Defina o limite de caracteres para quebra de linha
-                linha[coluna] = formatar_texto(valor)
+    #Adição de título
+    styles = getSampleStyleSheet()
+    titulo_style = styles["Title"]
+
+    titulo = Paragraph("Exportação da conversa do assistente pessoal", titulo_style)
 
     # Adicione a tabela ao documento
+    elementos.append(titulo)
     elementos.append(tabela)
 
     # Adicione um Spacer para criar um espaço entre a tabela e o próximo elemento
     elementos.append(Spacer(1, 0.25 * inch))
 
+    #doc.build(elementos,canvasmaker=Canvas('exportar_dados.pdf',pagesize=(landscape(A4))))
     doc.build(elementos)
 
     buffer.seek(0)
@@ -106,21 +140,27 @@ def html_to_pdf(html, pdf_buffer):
     pdfkit.from_string(html, pdf_buffer)
 
 def finalizar_conversa():
-    df = pd.DataFrame(columns=['Data/Hora','Completion Tokens','Prompt Tokens','Historico'])
+    #df = pd.DataFrame(columns=['Data/Hora','Completion Tokens','Prompt Tokens','Historico'])
 
-    conteudo_historico = ""
+    data_list = []
+    #https://stackoverflow.com/a/56746204
     for message in st.session_state.mensagens:
-        conteudo_historico += f"[{message['role']}] {message['content']}\n"
+        data_list.append([message['datetime'], message['prompt_tokens'], message['completion_tokens'], message['role'], message['content']])
 
+    # conteudo_historico = ""    
+    # for message in st.session_state.mensagens:
+    #     conteudo_historico += f"[{message['role']}] {message['content']}\n"
 
-    conversa = {
-        'Data/Hora' : date.today(),
-        'Completion Tokens' : contador_tokens["completion_tokens"],
-        'Prompt Tokens' : contador_tokens["prompt_tokens"],
-        'Historico': conteudo_historico
-    }
+    df = pd.DataFrame(data_list,columns=['Data/Hora', 'P Tks', 'C Tks', 'Papéis','Histórico'])
+
+    # conversa = {
+    #     #'Data/Hora' : datetime.now().strftime("%d/%m/%Y %H:%M:%S"), #date.today(),
+    #     'Completion Tokens' : contador_tokens["completion_tokens"],
+    #     'Prompt Tokens' : contador_tokens["prompt_tokens"],
+    #     'Historico': conteudo_historico
+    # }
     #df = df.append(conversa, ignore_index=True)
-    df = pd.concat([df, pd.DataFrame([conversa])], ignore_index=True)
+    #df = pd.concat([df, pd.DataFrame([conversa])], ignore_index=True)
     st.dataframe(df)
 
     # Converter DataFrame para HTML
@@ -132,8 +172,9 @@ def finalizar_conversa():
     # # Converter HTML para PDF no buffer de memória
     # html_to_pdf(html_data, pdf_buffer)
 
-    dados_tabela = converter_dataframe_para_lista(df)
-    pdf_buffer = exportar_tabela_para_pdf(dados_tabela)
+    #dados_tabela = converter_dataframe_para_lista(df)
+    data_list.insert(0,['Data/Hora', 'P Tks', 'C Tks', 'Papéis','Histórico'])
+    pdf_buffer = exportar_tabela_para_pdf(data_list)
 
     st.download_button("Baixar PDF", data=pdf_buffer, file_name="dataframe.pdf", mime="application/pdf")
 
@@ -162,12 +203,16 @@ opcao_estilo_resposta = st.sidebar.selectbox(
 # criando e inicializando o histório do chat
 if "mensagens" not in st.session_state:
     st.session_state.mensagens = [{
-        "role": 'system', 
+        "datetime": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+        "role": 'system',
         "content": '''
         Você é um assistente pessoal com objetivo de responder as 
         perguntas do usuário com um estilo de escrita {opcao_estilo_resposta}. 
         Limite o tamanho da resposta para {opcao_tamanho_resposta} palavras no máximo.
-        '''}]
+        ''',
+        "prompt_tokens": 0,
+        "completion_tokens": 0
+        }]
 
 # Aparecer o Historico do Chat na tela
 for mensagens in st.session_state.mensagens[1:]:
@@ -215,14 +260,19 @@ if prompt:
 
         resposta = chamada.choices[0].message.content
 
-        
-
         # Display assistant response in chat message container
         with st.chat_message("system"):
             st.markdown(f"Completion Tokens: {contador_tokens['completion_tokens']}\nPrompt Tokens: {contador_tokens['prompt_tokens']}")
             st.markdown(resposta)
         # Add assistant response to chat history
-        st.session_state.mensagens.append({"role": "system", "content": resposta})
+
+        st.session_state.mensagens.append({
+            "datetime": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+            "role": "system", 
+            "content": resposta,
+            "prompt_tokens": chamada.usage.prompt_tokens,
+            "completion_tokens": chamada.usage.completion_tokens
+            })
 
 
 
