@@ -12,6 +12,7 @@ import base64
 from io import BytesIO
 
 from reportlab.pdfgen.canvas import Canvas
+from reportlab.pdfgen import canvas
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, Spacer
@@ -42,6 +43,9 @@ opcao_criatividade = st.sidebar.slider(
     step=0.01
 )
 
+######################################################################################
+### Exportação Histórico PDF
+######################################################################################
 def formatar_texto(texto):
     estilo_texto = ParagraphStyle(name='Breadpointlist_style',
                               alignment=TA_LEFT,
@@ -69,8 +73,7 @@ def converter_dataframe_para_lista(df):
     lista_dados = [df.columns.tolist()] + df.values.tolist()
     return lista_dados
 
-def exportar_tabela_para_pdf(dados):
-    
+def exportar_tabela_para_pdf(dados):    
     buffer = BytesIO()
 
     left_margin = 5 * mm
@@ -123,13 +126,10 @@ def exportar_tabela_para_pdf(dados):
     buffer.seek(0)
     return buffer
 
-# Função para converter DataFrame para HTML com quebra de linha nas colunas de texto
-def dataframe_to_html(df):
-    return df.to_html(escape=False, formatters=dict(text=lambda x: x.replace('\n', '<br>')), index=False)
+######################################################################################
+### FIM - Exportação Histórico PDF
+######################################################################################
 
-# Função para converter HTML para PDF
-def html_to_pdf(html, pdf_buffer):
-    pdfkit.from_string(html, pdf_buffer)
 
 def finalizar_conversa():
     data_list = []
