@@ -15,10 +15,9 @@ from reportlab.pdfgen.canvas import Canvas
 from reportlab.pdfgen import canvas
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, Spacer
+from reportlab.platypus import SimpleDocTemplate, Table, Spacer, ListFlowable, ListItem, Frame, PageTemplate, KeepInFrame, Paragraph
 import reportlab.platypus as rlplt
 from reportlab.lib.pagesizes import letter, landscape, A4
-from reportlab.platypus import Frame, PageTemplate, KeepInFrame, Paragraph
 from reportlab.lib.units import mm, inch
 from reportlab.lib.enums import TA_JUSTIFY, TA_LEFT, TA_CENTER, TA_RIGHT
 
@@ -111,12 +110,26 @@ def exportar_tabela_para_pdf(dados):
     #Adição de título
     styles = getSampleStyleSheet()
     titulo_style = styles["Title"]
+    sumario_style = styles["Heading3"]
+    normal_style = styles["Normal"]
 
     titulo = Paragraph("Exportação da conversa do assistente pessoal", titulo_style)
-
     # Adicione a tabela ao documento
     elementos.append(titulo)
     elementos.append(tabela)
+
+    #Sumário de tokens
+    elementos.append(Spacer(5,10))
+    elementos.append(Paragraph(f"Sumário de Tokens:", sumario_style))
+    elementos.append(ListFlowable(
+        [
+            Paragraph(f"Completion Tokens {contador_tokens['completion_tokens']}", normal_style),
+            Paragraph(f"Prompt Tokens {contador_tokens['prompt_tokens']}", normal_style)
+        ],
+        bulletType='bullet',
+        start='bulletchar',
+        ))
+    elementos.append(Paragraph(f"Total {contador_tokens['completion_tokens'] + contador_tokens['prompt_tokens']}", styles["Heading4"]))
 
     # Adicione um Spacer para criar um espaço entre a tabela e o próximo elemento
     elementos.append(Spacer(1, 0.25 * inch))
