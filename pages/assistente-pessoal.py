@@ -158,7 +158,7 @@ def finalizar_conversa():
     data_list.insert(0,['Data/Hora', 'Tokens', 'Papéis','Histórico'])
     pdf_buffer = exportar_tabela_para_pdf(data_list)
 
-    st.download_button("Baixar PDF", data=pdf_buffer, file_name="dataframe.pdf", mime="application/pdf")
+    st.download_button("Baixar PDF", data=pdf_buffer, file_name="historico_chat.pdf", mime="application/pdf")
 
 
 def traduzir_tamanho_resposta(tamanho: int) -> str:
