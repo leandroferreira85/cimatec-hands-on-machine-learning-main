@@ -81,7 +81,7 @@ def exportar_tabela_para_pdf(dados):
     dados2 = [[formatar_texto(cell) for cell in row] for row in dados]
 
     # Crie a tabela com os dados
-    tabela = rlplt.Table(dados2, colWidths=(30*mm, 25*mm, 25*mm, None))
+    tabela = rlplt.Table(dados2, colWidths=(30*mm, 25*mm, 25*mm, None), splitInRow=1)
 
     # Defina o estilo da tabela
     estilo_tabela = [
