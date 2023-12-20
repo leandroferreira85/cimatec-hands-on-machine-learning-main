@@ -21,7 +21,9 @@
             //"program": "C:\\Users\\000.000000\\AppData\\Roaming\\Python\\Python311\\Scripts\\streamlit",  // /home/xx/tmp/venv/bin/streamlit",
             "args": [
                 "run",
-                "app.py"
+                "app.py",
+                "--server.port",
+                "5998"
             ],
             "console": "integratedTerminal",
             "justMyCode": true
