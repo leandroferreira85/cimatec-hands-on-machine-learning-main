@@ -1,4 +1,3 @@
-import time
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -6,9 +5,6 @@ from datetime import datetime
 
 from openai import OpenAI
 
-import pdfkit
-import tempfile
-import base64
 from io import BytesIO
 
 from reportlab.pdfgen.canvas import Canvas
@@ -33,6 +29,7 @@ contador_tokens = {
 # Obtendo a chave da openai
 chave = st.sidebar.text_input('Chave da API OpenAI', type = 'password')
 client = OpenAI(api_key=chave)
+modelo = "gpt-3.5-turbo"
 
 # input para a criatividade das respostas
 opcao_criatividade = st.sidebar.slider(
@@ -67,10 +64,6 @@ def formatar_texto(texto):
                               spaceShrinkage=0.05,
                               )
     return Paragraph(texto, estilo_texto) if isinstance(texto, str) else texto
-
-def converter_dataframe_para_lista(df):
-    lista_dados = [df.columns.tolist()] + df.values.tolist()
-    return lista_dados
 
 def exportar_tabela_para_pdf(dados):    
     buffer = BytesIO()
@@ -182,62 +175,79 @@ opcao_estilo_resposta = st.sidebar.selectbox(
     options=["expositivo", "rebuscado", "expositivo","narrativo", "criativo", "objetivo", "pragmático", "sistemático", "debochado","soteropolitano"]
 )
 
-# criando e inicializando o histório do chat
-if "mensagens" not in st.session_state:
-    st.session_state.mensagens = [{        
-        "role": 'system',
-        "content": f'''
-        Você é um assistente pessoal com objetivo de responder as 
-        perguntas do usuário com um estilo de escrita {opcao_estilo_resposta}. 
-        Limite o tamanho da resposta para {opcao_tamanho_resposta} palavras no máximo.
-        '''
+
+uploaded_files = st.file_uploader("Selecione ou arraste os arquivos que irão fazer parte do contexto:",
+                                  type="txt",
+                                  accept_multiple_files=True)
+
+if uploaded_files:
+    text_list = []
+    for file in uploaded_files:
+        texto = file.getvalue().decode("utf-8")
+        text_list.append(texto)
+
+    # criando e inicializando o histório do chat
+    contexto = f'''
+            Você é um assistente pessoal com objetivo de responder as 
+            perguntas do usuário com um estilo de escrita {opcao_estilo_resposta}. 
+            Limite o tamanho da resposta para {opcao_tamanho_resposta} palavras no máximo.
+            '''
+    if text_list and len(text_list) > 0:
+        contexto += "Para responder, considere as seguintes informações: \n\n\n\n"
+        contexto += f" {texto}\n"
+
+    if "mensagens" not in st.session_state:
+        st.session_state.mensagens = [{
+            "role": 'system', 
+            "content": contexto}]
+        st.session_state.export_data = [{
+            "datetime": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+            "tokens" : "P 0"
         }]
-    st.session_state.export_data = [{
-        "datetime": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
-        "tokens" : "P 0"
-    }]
 
-# Aparecer o Historico do Chat na tela
-for mensagens in st.session_state.mensagens[1:]:
-    with st.chat_message(mensagens["role"]):
-        st.markdown(mensagens["content"])
+    # Aparecer o Historico do Chat na tela
+    for mensagens in st.session_state.mensagens[1:]:
+        with st.chat_message(mensagens["role"]):
+            st.markdown(mensagens["content"])
 
-# React to user input
-prompt = st.chat_input("Digite alguma coisa")
-st.sidebar.button(
-    label="Finalizar conversa",
-    on_click=finalizar_conversa
-)
+    # React to user input
+    prompt = st.chat_input("Digite alguma coisa")
+    st.sidebar.button(
+        label="Finalizar conversa",
+        on_click=finalizar_conversa
+    )
 
-if prompt:
-    with st.chat_message("user"):
-        st.markdown(prompt)
 
-    # TODO: incluir código da moderação do prompt
-    response_moderation = client.moderations.create(input=prompt)
+    if prompt:
+        with st.chat_message("user"):
+            st.markdown(prompt)
 
-    df = pd.DataFrame(dict(response_moderation.results[0].category_scores).items(), columns=['Category', 'Value'])
-    df.sort_values(by = 'Value', ascending = False, inplace=True)
+        # TODO: incluir código da moderação do prompt
+        response_moderation = client.moderations.create(input=prompt)
 
-    if (df.iloc[0,1] > 0.01):
-        with st.chat_message("system"):
-            st.markdown("Acho que o que você falou se enquadra em algumas categorias que eu não posso falar sobre:")
-            for category in df.head(5)['Category']:
-                st.markdown(f'{category}')
-            st.markdown("Que tal falarmos sobre outra coisa?")
-    else:
-        # Display user message in chat message container
-        
-        # Add user message to chat history
-        st.session_state.mensagens.append({"role": "user", 
-                                           "content": prompt
-                                           })
+        df = pd.DataFrame(dict(response_moderation.results[0].category_scores).items(), columns=['Category', 'Value'])
+        df.sort_values(by = 'Value', ascending = False, inplace=True)
 
-        chamada = client.chat.completions.create(
-            model = 'gpt-3.5-turbo',
-            temperature = opcao_criatividade,
-            messages = st.session_state.mensagens
-        )
+        if (df.iloc[0,1] > 0.01):
+            with st.chat_message("system"):
+                st.markdown("Acho que o que você falou se enquadra em algumas categorias que eu não posso falar sobre:")
+                st.markdown("<ul>", unsafe_allow_html=True)
+                for category in df.head(5)['Category']:
+                    st.markdown(f'<li>Categoria: {category}</li>', unsafe_allow_html=True)
+                st.markdown("</ul>", unsafe_allow_html=True)
+
+                st.markdown("Que tal falarmos sobre outra coisa?")
+        else:
+            # Display user message in chat message container
+            
+            # Add user message to chat history
+            st.session_state.mensagens.append({"role": "user", "content": prompt})
+
+            chamada = client.chat.completions.create(
+                model = modelo,
+                temperature = opcao_criatividade,
+                messages = st.session_state.mensagens
+            )
 
         st.session_state.export_data.append({"datetime": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
                                            "tokens": f'P {chamada.usage.prompt_tokens}'
