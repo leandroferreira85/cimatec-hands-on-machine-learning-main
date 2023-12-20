@@ -43,13 +43,6 @@ opcao_criatividade = st.sidebar.slider(
 )
 
 def formatar_texto(texto):
-    # estilo_texto = ParagraphStyle(
-    #     'estilo_texto',
-    #     parent=getSampleStyleSheet()['Normal'],
-    #     wordWrap='LTR',
-    #     allowWidows=1,
-    #     allowOrphans=1,
-    # )
     estilo_texto = ParagraphStyle(name='Breadpointlist_style',
                               alignment=TA_LEFT,
                               parent=getSampleStyleSheet()['Normal'],
@@ -93,7 +86,7 @@ def exportar_tabela_para_pdf(dados):
     dados2 = [[formatar_texto(cell) for cell in row] for row in dados]
 
     # Crie a tabela com os dados
-    tabela = rlplt.Table(dados2, colWidths=(30*mm, 20*mm, 20*mm, 25*mm, None))
+    tabela = rlplt.Table(dados2, colWidths=(30*mm, 25*mm, 25*mm, None))
 
     # Defina o estilo da tabela
     estilo_tabela = [
@@ -125,7 +118,6 @@ def exportar_tabela_para_pdf(dados):
     # Adicione um Spacer para criar um espaço entre a tabela e o próximo elemento
     elementos.append(Spacer(1, 0.25 * inch))
 
-    #doc.build(elementos,canvasmaker=Canvas('exportar_dados.pdf',pagesize=(landscape(A4))))
     doc.build(elementos)
 
     buffer.seek(0)
@@ -140,40 +132,17 @@ def html_to_pdf(html, pdf_buffer):
     pdfkit.from_string(html, pdf_buffer)
 
 def finalizar_conversa():
-    #df = pd.DataFrame(columns=['Data/Hora','Completion Tokens','Prompt Tokens','Historico'])
-
     data_list = []
+
     #https://stackoverflow.com/a/56746204
-    for message in st.session_state.mensagens:
-        data_list.append([message['datetime'], message['prompt_tokens'], message['completion_tokens'], message['role'], message['content']])
+    for message, export_data_item in zip(st.session_state.mensagens, st.session_state.export_data):
+        data_list.append([export_data_item['datetime'], export_data_item['tokens'], message['role'], message['content']])
 
-    # conteudo_historico = ""    
-    # for message in st.session_state.mensagens:
-    #     conteudo_historico += f"[{message['role']}] {message['content']}\n"
+    df = pd.DataFrame(data_list,columns=['Data/Hora', 'Tokens', 'Papéis','Histórico'])
 
-    df = pd.DataFrame(data_list,columns=['Data/Hora', 'P Tks', 'C Tks', 'Papéis','Histórico'])
-
-    # conversa = {
-    #     #'Data/Hora' : datetime.now().strftime("%d/%m/%Y %H:%M:%S"), #date.today(),
-    #     'Completion Tokens' : contador_tokens["completion_tokens"],
-    #     'Prompt Tokens' : contador_tokens["prompt_tokens"],
-    #     'Historico': conteudo_historico
-    # }
-    #df = df.append(conversa, ignore_index=True)
-    #df = pd.concat([df, pd.DataFrame([conversa])], ignore_index=True)
     st.dataframe(df)
 
-    # Converter DataFrame para HTML
-    # html_data = dataframe_to_html(df)
-
-    # # Criar buffer de memória para armazenar o PDF
-    # pdf_buffer = BytesIO()
-
-    # # Converter HTML para PDF no buffer de memória
-    # html_to_pdf(html_data, pdf_buffer)
-
-    #dados_tabela = converter_dataframe_para_lista(df)
-    data_list.insert(0,['Data/Hora', 'P Tks', 'C Tks', 'Papéis','Histórico'])
+    data_list.insert(0,['Data/Hora', 'Tokens', 'Papéis','Histórico'])
     pdf_buffer = exportar_tabela_para_pdf(data_list)
 
     st.download_button("Baixar PDF", data=pdf_buffer, file_name="dataframe.pdf", mime="application/pdf")
@@ -202,17 +171,18 @@ opcao_estilo_resposta = st.sidebar.selectbox(
 
 # criando e inicializando o histório do chat
 if "mensagens" not in st.session_state:
-    st.session_state.mensagens = [{
-        "datetime": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+    st.session_state.mensagens = [{        
         "role": 'system',
-        "content": '''
+        "content": f'''
         Você é um assistente pessoal com objetivo de responder as 
         perguntas do usuário com um estilo de escrita {opcao_estilo_resposta}. 
         Limite o tamanho da resposta para {opcao_tamanho_resposta} palavras no máximo.
-        ''',
-        "prompt_tokens": 0,
-        "completion_tokens": 0
+        '''
         }]
+    st.session_state.export_data = [{
+        "datetime": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+        "tokens" : "P 0"
+    }]
 
 # Aparecer o Historico do Chat na tela
 for mensagens in st.session_state.mensagens[1:]:
@@ -225,7 +195,6 @@ st.sidebar.button(
     label="Finalizar conversa",
     on_click=finalizar_conversa
 )
-
 
 if prompt:
     with st.chat_message("user"):
@@ -247,13 +216,19 @@ if prompt:
         # Display user message in chat message container
         
         # Add user message to chat history
-        st.session_state.mensagens.append({"role": "user", "content": prompt})
+        st.session_state.mensagens.append({"role": "user", 
+                                           "content": prompt
+                                           })
 
         chamada = client.chat.completions.create(
             model = 'gpt-3.5-turbo',
             temperature = opcao_criatividade,
             messages = st.session_state.mensagens
         )
+
+        st.session_state.export_data.append({"datetime": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+                                           "tokens": f'P {chamada.usage.prompt_tokens}'
+                                           })
 
         contador_tokens['prompt_tokens'] += chamada.usage.prompt_tokens
         contador_tokens['completion_tokens'] += chamada.usage.completion_tokens
@@ -264,15 +239,14 @@ if prompt:
         with st.chat_message("system"):
             st.markdown(f"Completion Tokens: {contador_tokens['completion_tokens']}\nPrompt Tokens: {contador_tokens['prompt_tokens']}")
             st.markdown(resposta)
-        # Add assistant response to chat history
 
-        st.session_state.mensagens.append({
-            "datetime": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
-            "role": "system", 
-            "content": resposta,
-            "prompt_tokens": chamada.usage.prompt_tokens,
-            "completion_tokens": chamada.usage.completion_tokens
+        # Add assistant response to chat history
+        st.session_state.mensagens.append({"role": "system", 
+            "content": resposta            
             })
+        st.session_state.export_data.append({"datetime": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+                                           "tokens": f'C {chamada.usage.completion_tokens}'
+                                           })
 
 
 
