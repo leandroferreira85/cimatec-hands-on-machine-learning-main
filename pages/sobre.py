@@ -12,7 +12,7 @@ st.markdown(
 """
 Equipe:
 - A
-- B
-- C
+- Leandro Soriano Ferreira
+- Milton Sobrinho Cerqueira
 """
 )
