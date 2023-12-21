@@ -25,6 +25,8 @@ contador_tokens = {
     'completion_tokens': 0
 }
 
+CUSTO_INPUT_PER_TOKEN = 0.0010 / 1000
+CUSTO_OUTPUT_PER_TOKEN = 0.0020 / 1000
 
 # Obtendo a chave da openai
 chave = st.sidebar.text_input('Chave da API OpenAI', type = 'password')
@@ -111,18 +113,21 @@ def exportar_tabela_para_pdf(dados):
     elementos.append(titulo)
     elementos.append(tabela)
 
+    custo_prompt = contador_tokens['prompt_tokens'] * CUSTO_INPUT_PER_TOKEN
+    custo_completion = contador_tokens['completion_tokens'] * CUSTO_OUTPUT_PER_TOKEN
+
     #Sumário de tokens
     elementos.append(Spacer(5,10))
     elementos.append(Paragraph(f"Sumário de Tokens:", sumario_style))
     elementos.append(ListFlowable(
         [
-            Paragraph(f"Completion Tokens {contador_tokens['completion_tokens']}", normal_style),
-            Paragraph(f"Prompt Tokens {contador_tokens['prompt_tokens']}", normal_style)
+            Paragraph(f"Prompt Tokens {contador_tokens['prompt_tokens']} | Custo estimado {custo_prompt}", normal_style),
+            Paragraph(f"Completion Tokens {contador_tokens['completion_tokens']} | Custo estimado {custo_completion}", normal_style)
         ],
         bulletType='bullet',
         start='bulletchar',
         ))
-    elementos.append(Paragraph(f"Total {contador_tokens['completion_tokens'] + contador_tokens['prompt_tokens']}", styles["Heading4"]))
+    elementos.append(Paragraph(f"Total {contador_tokens['completion_tokens'] + contador_tokens['prompt_tokens']} tokens | Custo estimado total {custo_prompt+custo_completion}", styles["Heading4"]))
 
     # Adicione um Spacer para criar um espaço entre a tabela e o próximo elemento
     elementos.append(Spacer(1, 0.25 * inch))
@@ -147,6 +152,17 @@ def finalizar_conversa():
     df = pd.DataFrame(data_list,columns=['Data/Hora', 'Tokens', 'Papéis','Histórico'])
 
     st.dataframe(df)
+
+    st.text('Sumário de Tokens:')
+    custo_prompt = contador_tokens['prompt_tokens'] * CUSTO_INPUT_PER_TOKEN
+    custo_completion = contador_tokens['completion_tokens'] * CUSTO_OUTPUT_PER_TOKEN
+    st.markdown(f''' 
+    - Prompt Tokens {contador_tokens['prompt_tokens']} | Custo estimado {custo_prompt}
+    - Completion Tokens {contador_tokens['completion_tokens']} | Custo estimado {custo_completion}
+    ''')
+
+    container_custo = st.container(border=True)
+    container_custo.write(f"Total  {contador_tokens['prompt_tokens']+contador_tokens['completion_tokens']} tokens | Custo estimado total {custo_prompt+custo_completion}")
 
     data_list.insert(0,['Data/Hora', 'Tokens', 'Papéis','Histórico'])
     pdf_buffer = exportar_tabela_para_pdf(data_list)
@@ -197,15 +213,17 @@ if uploaded_file:
             "content": contexto
             }
 
+    #verificar se é um arquivo novo, para não adicioná-lo novamente ao contexto
     if "mensagens" not in st.session_state:
         st.session_state.mensagens = [mensagem_contexto]
-    else:
+        st.session_state.export_data = []
+        st.session_state.export_data.append({"datetime": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+                                            "tokens": f'—'
+                                            })
+    elif st.session_state.current_file != uploaded_file.name: #adiciona ao contexto, apenas se for um novo arquivo
         st.session_state.mensagens.append(mensagem_contexto)
         
-    st.session_state.export_data = [{
-        "datetime": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
-        "tokens" : "P 0"
-    }]
+    st.session_state.current_file = uploaded_file.name
 
     # Aparecer o Historico do Chat na tela
     for mensagens in st.session_state.mensagens[1:]:
@@ -220,7 +238,6 @@ if uploaded_file:
         label="Finalizar conversa",
         on_click=finalizar_conversa
     )
-
 
     if prompt:
         with st.chat_message("user"):
@@ -266,7 +283,7 @@ if uploaded_file:
 
             # Display assistant response in chat message container
             with st.chat_message("system"):
-                st.markdown(f"Completion Tokens: {contador_tokens['completion_tokens']}\nPrompt Tokens: {contador_tokens['prompt_tokens']}")
+                st.markdown(f"Completion Tokens: {contador_tokens['completion_tokens']} \nPrompt Tokens: {contador_tokens['prompt_tokens']}")
                 st.markdown(resposta)
 
             # Add assistant response to chat history
