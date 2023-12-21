@@ -93,14 +93,16 @@ valores_formulario = {
 }
 
 df_predict = pd.DataFrame(valores_formulario)
-st.dataframe(df_predict)
 
 # usando o modelo salvo para fazer a previsão 
 botao = st.button('Prever se tem diabetes')
 if botao:
-    previsao = predict_model(modelo, data=df_predict)
-    if previsao.loc[0,'prediction_label']:
-        valor = 'Essa pessoa tem diabetes'
+    previsao = predict_model(modelo,  data=df_predict)
+    prediction_label = previsao.loc[0,'prediction_label']
+    prediction_score = previsao.loc[0,'prediction_score']
+    if prediction_label:
+        valor = f'Essa pessoa tem diabetes (propensão de {prediction_score:.3f}).'
     else:
-        valor = 'Essa pessoa não tem diabetes'
+        valor = f'Essa pessoa não tem diabetes  (propensão de {prediction_score:.3f}).'
     st.write(f'### {valor}')
+
