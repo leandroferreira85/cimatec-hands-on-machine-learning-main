@@ -176,39 +176,43 @@ opcao_estilo_resposta = st.sidebar.selectbox(
 )
 
 
-uploaded_files = st.file_uploader("Selecione ou arraste os arquivos que irão fazer parte do contexto:",
-                                  type="txt",
-                                  accept_multiple_files=True)
+uploaded_file = st.file_uploader("Selecione ou arraste os arquivos que irão fazer parte do contexto:",
+                                  type="txt")
 
-if uploaded_files:
-    text_list = []
-    for file in uploaded_files:
-        texto = file.getvalue().decode("utf-8")
-        text_list.append(texto)
+if uploaded_file:
+    
+    texto = uploaded_file.getvalue().decode("utf-8")
 
     # criando e inicializando o histório do chat
     contexto = f'''
-            Você é um assistente pessoal com objetivo de responder as 
+            [Definição de Contexto] Você é um assistente pessoal com objetivo de responder as 
             perguntas do usuário com um estilo de escrita {opcao_estilo_resposta}. 
             Limite o tamanho da resposta para {opcao_tamanho_resposta} palavras no máximo.
             '''
-    if text_list and len(text_list) > 0:
-        contexto += "Para responder, considere as seguintes informações: \n\n\n\n"
-        contexto += f" {texto}\n"
+    contexto += "Para responder, considere as seguintes informações: \n\n\n\n"
+    contexto += f" {texto}\n"
+
+    mensagem_contexto = {
+            "role": 'system', 
+            "content": contexto
+            }
 
     if "mensagens" not in st.session_state:
-        st.session_state.mensagens = [{
-            "role": 'system', 
-            "content": contexto}]
-        st.session_state.export_data = [{
-            "datetime": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
-            "tokens" : "P 0"
-        }]
+        st.session_state.mensagens = [mensagem_contexto]
+    else:
+        st.session_state.mensagens.append(mensagem_contexto)
+        
+    st.session_state.export_data = [{
+        "datetime": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+        "tokens" : "P 0"
+    }]
 
     # Aparecer o Historico do Chat na tela
     for mensagens in st.session_state.mensagens[1:]:
-        with st.chat_message(mensagens["role"]):
-            st.markdown(mensagens["content"])
+        conteudo = mensagens["content"]
+        if "[Definição de Contexto]" not in conteudo:
+            with st.chat_message(mensagens["role"]):
+                st.markdown(conteudo)
 
     # React to user input
     prompt = st.chat_input("Digite alguma coisa")
@@ -241,7 +245,9 @@ if uploaded_files:
             # Display user message in chat message container
             
             # Add user message to chat history
-            st.session_state.mensagens.append({"role": "user", "content": prompt})
+            st.session_state.mensagens.append({
+                "role": "user", 
+                "content": prompt                })
 
             chamada = client.chat.completions.create(
                 model = modelo,
@@ -249,27 +255,28 @@ if uploaded_files:
                 messages = st.session_state.mensagens
             )
 
-        st.session_state.export_data.append({"datetime": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
-                                           "tokens": f'P {chamada.usage.prompt_tokens}'
-                                           })
+            st.session_state.export_data.append({"datetime": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+                                            "tokens": f'P {chamada.usage.prompt_tokens}'
+                                            })
 
-        contador_tokens['prompt_tokens'] += chamada.usage.prompt_tokens
-        contador_tokens['completion_tokens'] += chamada.usage.completion_tokens
+            contador_tokens['prompt_tokens'] += chamada.usage.prompt_tokens
+            contador_tokens['completion_tokens'] += chamada.usage.completion_tokens
 
-        resposta = chamada.choices[0].message.content
+            resposta = chamada.choices[0].message.content
 
-        # Display assistant response in chat message container
-        with st.chat_message("system"):
-            st.markdown(f"Completion Tokens: {contador_tokens['completion_tokens']}\nPrompt Tokens: {contador_tokens['prompt_tokens']}")
-            st.markdown(resposta)
+            # Display assistant response in chat message container
+            with st.chat_message("system"):
+                st.markdown(f"Completion Tokens: {contador_tokens['completion_tokens']}\nPrompt Tokens: {contador_tokens['prompt_tokens']}")
+                st.markdown(resposta)
 
-        # Add assistant response to chat history
-        st.session_state.mensagens.append({"role": "system", 
-            "content": resposta            
-            })
-        st.session_state.export_data.append({"datetime": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
-                                           "tokens": f'C {chamada.usage.completion_tokens}'
-                                           })
+            # Add assistant response to chat history
+            st.session_state.mensagens.append({
+                "role": "system", 
+                "content": resposta         
+                })
+            st.session_state.export_data.append({"datetime": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+                                            "tokens": f'C {chamada.usage.completion_tokens}'
+                                            })
 
 
 
