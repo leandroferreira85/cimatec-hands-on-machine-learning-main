@@ -7,3 +7,6 @@ Executar o comando para instalar pacotes necessários para executar a aplicaçã
 ```sh
 pip install --requirement requirements.txt
 ```
+
+
+Link do deploy *Streamlit*: [Cimatec Hands on Machine Learning](https://cimatec-hands-on-machine-learning-main.streamlit.app/ "Link do aplicativo no ambiente streamlit").
