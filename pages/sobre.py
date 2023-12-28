@@ -11,7 +11,7 @@ st.write('\n\n\n')
 st.markdown(
 """
 Equipe:
-- A
+- Flávio Pimentel Batista
 - Leandro Soriano Ferreira
 - Milton Sobrinho Cerqueira
 """
